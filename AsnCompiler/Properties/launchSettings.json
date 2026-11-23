@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AsnCompiler": {
+      "commandName": "Project",
+      "commandLineArgs": "D:\\Users\\Miran\\source\\repos\\AsnProject.2024-06-26-001\\AsnTest\\asn > asn.txt 2> error.txt"
+    }
+  }
+}
