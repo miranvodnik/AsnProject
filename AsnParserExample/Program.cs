@@ -1,15 +1,19 @@
-﻿using Anglr.Parser.Core;
+﻿using Anglr.Compiler;
+using Anglr.Declarations;
+using Anglr.Parser;
+using Anglr.Parser.Core;
 using Anglr.Parser.SyntaxTree;
 using Anglr.Parser.Walker;
+using AnglrLibrary;
 using AnglrLogLibrary;
 using Asn.Declarations;
 using Asn.Lexer;
 using Asn.Parser;
 using Asn.Scanner;
 using AsnLibrary;
-
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -19,12 +23,26 @@ namespace AsnParserExample
 {
     internal class Program
     {
-        static void Main (string [] args) => AsnParserExample.MainTask (args);
+        static void Main (string [] args) => (new AsnParserExample ()).MainTask (args);
     }
 
     internal class AsnParserExample
     {
-        internal static void MainTask (string [] args)
+        public IAnglrLogger Logger { get; private set; }
+        [AllowNull] public anglrCompiler AnglrCompiler { get; private set; }
+        [AllowNull] public string GrammarFileName { get; private set; }
+        [AllowNull] public SyntaxTreeBase GrammarSyntaxTree { get; private set; }
+        [AllowNull] public AnglrParserStatesGenerator GrammarStatesGenerator { get; private set; }
+
+        public AsnParserExample ()
+        {
+            Logger = new ConsoleAnglrLogger ();
+            AnglrCompiler = null;
+            GrammarFileName = null;
+            GrammarSyntaxTree = null;
+        }
+
+        internal void MainTask (string [] args)
         {
             // global flags should be set before AsnParser object creation
             AsnParser.createParseTree = true;
@@ -47,9 +65,23 @@ namespace AsnParserExample
             // invocation of scannerEnterEvent and then never again.
             int startToken = AsnDeclarations.tokens.ModuleDefinitions_token;
 
+            bool grammarFlag = false;
             // parse every source file named in command line
             foreach (string arg in args)
             {
+                if (arg == "-grammar")
+                {
+                    grammarFlag = true;
+                    continue;
+                }
+                if (grammarFlag)
+                {
+                    grammarFlag = false;
+                    GrammarFileName = arg;
+                    InvokeAnglrCompiler ();
+                    continue;
+                }
+
                 AsnParser parser = new AsnParser ();
                 AsnLexer lexer = new AsnLexer (new StreamReader (arg));
 
@@ -120,6 +152,19 @@ namespace AsnParserExample
                     };
                 }
 
+                if (AnglrCompiler != null)
+                {
+                    parser.StartParserEvent += Parser_StartParserEvent;
+                    parser.SyntaxErrorEvent += Parser_SyntaxErrorEvent;
+                    parser.ShiftStepEvent += Parser_ShiftStepEvent;
+                    parser.ReduceStepEvent += Parser_ReduceStepEvent;
+                    parser.SplitStepEvent += Parser_SplitStepEvent;
+                    parser.LoopStepEvent += Parser_LoopStepEvent;
+                    parser.JoinEvent += Parser_JoinEvent;
+                    parser.FinalStepEvent += Parser_FinalStepEvent;
+                    parser.StopParserEvent += Parser_StopParserEvent;
+                }
+
                 // invoke parser
                 if (parser.parse (lexer) != 0)
                     continue;   // errors, skip current file
@@ -136,9 +181,77 @@ namespace AsnParserExample
                 }
             }
         }
+
+        private void Parser_StartParserEvent (int stackNr, object [] info = null)
+        {
+        }
+
+        private void Parser_SyntaxErrorEvent (int stackNr, int state)
+        {
+        }
+
+        private void Parser_ShiftStepEvent (int stackNr, int state, int tokenValue, string tokenName, string tokenText, bool conflict)
+        {
+        }
+
+        private void Parser_ReduceStepEvent (int stackNr, int prodNr, int ruleNr, string ruleName, int prodLen, int fallingState, int bottomState, int risingState, SyntaxTreeBase currentValue, bool conflict)
+        {
+        }
+
+        private void Parser_SplitStepEvent (int stackNr, int state, bool begin)
+        {
+        }
+
+        private void Parser_LoopStepEvent (int stackNr, int state)
+        {
+        }
+
+        private void Parser_JoinEvent (int stackNr, int joinNr)
+        {
+        }
+
+        private void Parser_FinalStepEvent (int stackNr)
+        {
+        }
+
+        private void Parser_StopParserEvent ()
+        {
+        }
+
+        private void InvokeAnglrCompiler ()
+        {
+            if (GrammarFileName != null)
+            {
+                AnglrParser.createParseTree = true;
+                AnglrParser.loopDetection = true;
+                anglrCompiler.createPrecedenceGrammar = true;
+                anglrCompiler.createIterators = true;
+
+                AnglrCompiler = new anglrCompiler (null, Logger);
+                AnglrCompiler.Error_Event += (int lineno, int column, int token, string tokenString) =>
+                {
+                    return true;
+                };
+
+                int res = AnglrCompiler.Parse (GrammarFileName, AnglrDeclarations.tokens._anglr_file_terminal_, new object [] { Path.GetFileNameWithoutExtension (GrammarFileName), "File Name", GrammarFileName });
+                if (res != 0)
+                    return;
+                GrammarSyntaxTree = null;
+                foreach (SyntaxTreeBase node in AnglrCompiler.parseList)
+                {
+                    if (node == null)
+                        continue;
+                    GrammarSyntaxTree = node;
+                }
+                if (GrammarSyntaxTree == null)
+                    return;
+                GrammarStatesGenerator = new AnglrParserStatesGenerator (AnglrCompiler);
+                GrammarStatesGenerator?.GenerateParserStates ();
+            }
+        }
     }
 
-    internal class AsnSyntaxTreeVisitor : SyntaxTreeWalker
+    internal class AsnSyntaxTreeVisitor : Asn.Parser.SyntaxTreeWalker
     {
         internal AsnSyntaxTreeVisitor ()
         {
@@ -193,7 +306,7 @@ namespace AsnParserExample
             default:
                 break;
             }
-            Console.WriteLine ($"{p_Assignment.Emit(-1)}");
+            Console.WriteLine ($"{p_Assignment.Emit (-1)}");
             return true;
         }
     }
