@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "AsnParserExample": {
+      "commandName": "Project",
+      "commandLineArgs": "IN-SSF-SCF-ops-args.asn",
+      "workingDirectory": "D:\\Users\\Miran\\source\\repos\\AsnProject.2026-04-20-001\\AsnTest\\asn"
+    }
+  }
+}

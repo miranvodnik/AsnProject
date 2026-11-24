@@ -1,11 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.37906.3 d17.14
+VisualStudioVersion = 17.14.37906.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsnLibrary", "AsnLibrary\AsnLibrary.csproj", "{DC398429-0080-4F76-AD3B-26FC16AD9ABE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsnCompiler", "AsnCompiler\AsnCompiler.csproj", "{2EFC3800-3E4A-4003-B22E-608E212BBA01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsnParserExample", "AsnParserExample\AsnParserExample.csproj", "{D67B5C59-2AE1-4415-8E0F-7CFA8D473FAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{2EFC3800-3E4A-4003-B22E-608E212BBA01}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2EFC3800-3E4A-4003-B22E-608E212BBA01}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2EFC3800-3E4A-4003-B22E-608E212BBA01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D67B5C59-2AE1-4415-8E0F-7CFA8D473FAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D67B5C59-2AE1-4415-8E0F-7CFA8D473FAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D67B5C59-2AE1-4415-8E0F-7CFA8D473FAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D67B5C59-2AE1-4415-8E0F-7CFA8D473FAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -4,7 +4,9 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
 
-	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+	  <DefineConstants>$(DefineConstants);ANGLR_DEBUGGER</DefineConstants>
+	</PropertyGroup>
 
 	<ItemGroup>
 		<AnglrFile Include="asn.anglr">
