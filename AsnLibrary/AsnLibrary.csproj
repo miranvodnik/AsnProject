@@ -9,6 +9,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="Syntax-test\**" />
+	  <EmbeddedResource Remove="Syntax-test\**" />
+	  <None Remove="Syntax-test\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<AnglrFile Include="asn.anglr">
 			<Debug>false</Debug>
 			<Tree>true</Tree>
@@ -21,7 +27,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-    <PackageReference Include="AnglrMSBuildTasks" Version="1.0.66" />
+    <PackageReference Include="AnglrMSBuildTasks" Version="1.0.69" />
   </ItemGroup>
 
 </Project>
