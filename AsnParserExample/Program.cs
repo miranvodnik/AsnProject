@@ -12,16 +12,17 @@ using Asn.Lexer;
 using Asn.Parser;
 using Asn.Scanner;
 using AsnLibrary;
+using Newtonsoft.Json;
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
+using System.ComponentModel.Design;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.ComponentModel.Design;
-using System.Collections;
 
 namespace AsnParserExample
 {
@@ -278,135 +279,292 @@ namespace AsnParserExample
             }
         }
 
-        private void DisplayParserPDAStacks (string ruleName, int fallingState, int bottomState, int risingState)
+        public PdaStackConfigSet GetPdaStackSnapshot (int [] stateStack)
         {
-            return;
-            Logger?.InfoLine ($"reduce break-point: rule '{ruleName}', transition {fallingState} -> {bottomState} -> {risingState}");
-            foreach (var stack in Parser.stackSet)
+            PdaStackConfigSet configSets = new PdaStackConfigSet ();
+
+            int stackDepth = stateStack.Length;
+
+            List<RhsState> rhsStates = new List<RhsState> ();
+            for (int i = 0; i < stackDepth; ++i)
             {
-                Logger?.InfoLine ($"stack: {stack.stackCounter}");
-                int [] stateStack = stack.stateStack.ToArray ();
-                int stackDepth = stack.stateStack.stackDepth;
-                for (int i = 0; i < stackDepth; ++i)
-                    Logger?.InfoLine ($"\t{stateStack [i]}");
+                rhsStates.Add (GrammarStatesGenerator.GetRhsState (stateStack [i]));
             }
+            rhsStates.Add (null);
+
+            // *** COLLECT ***
+            for (int i = 0; i < stackDepth; ++i)
+            {
+                int stateNr = stateStack [i];
+                PdaRhsStateConfigSet transitions = new PdaRhsStateConfigSet ();
+                configSets [stateNr] = transitions;
+                RhsState rhsState = GrammarStatesGenerator.GetRhsState (stateNr);
+                rhscfgset core = rhsState.m_core;
+                closurelist closure = rhsState.m_closure;
+                Logger?.InfoLine ($"\tState {stateNr}, {rhsState.m_SymbolToken.name}", AnglrLoggerBase.WriteOnlyMsg);
+
+                RhsState refState = rhsStates [i + 1];
+                SymbolToken refSymbol = null;
+                if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
+                    continue;
+
+                Queue<SymbolToken> queue = new Queue<SymbolToken> ();
+                queue.Enqueue (refSymbol);
+                while (queue.Count > 0)
+                {
+                    refSymbol = queue.Dequeue ();
+                    foreach (var element in core.Values)
+                    {
+                        RhsProduction production = element.rhsProduction;
+                        PdaRhsConfiguration configuration = new PdaRhsConfiguration (production, element.rhsIterator.position);
+                        if (!configuration.AtEnd && (configuration.DotNode.symbolToken.id != refSymbol.id))
+                            continue;
+                        if (transitions.GetViewBetween (configuration, configuration).Count > 0)
+                            continue;
+                        transitions.Add (configuration);
+                    }
+                    foreach (var element in closure.Values)
+                    {
+                        RhsProductionNode productionNode = element.rhsProductionNode;
+                        foreach (var production in productionNode.Productions)
+                        {
+                            if (production.rhsNodes.Count == 0)
+                                continue;
+                            RhsNode rhsNode = production.rhsNodes [0];
+                            if (rhsNode.symbolToken.id != refSymbol.id)
+                                continue;
+                            PdaRhsConfiguration configuration = new PdaRhsConfiguration (production, 0);
+                            if (transitions.GetViewBetween (configuration, configuration).Count > 0)
+                                continue;
+                            queue.Enqueue (production.symbolToken);
+                            transitions.Add (configuration);
+                        }
+                    }
+                }
+            }
+
+            // *** OPTIMIZE ***
+            for (int i = 0; i < stackDepth - 1; ++i)
+            {
+                int stateNr = stateStack [i];
+                int refStateNr = stateStack [i + 1];
+
+                RhsState refState = rhsStates [i + 1];
+                SymbolToken refSymbol = null;
+                if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
+                    continue;
+
+                PdaRhsStateConfigSet transitions = new PdaRhsStateConfigSet ();
+                PdaRhsStateConfigSet oldTransitions = configSets [stateNr];
+                PdaRhsStateConfigSet refTransitions = configSets [refStateNr];
+
+                foreach (var transition in oldTransitions)
+                {
+                    if (transition.AtEnd || (transition.DotNode.symbolToken.id != refSymbol.id))
+                    {
+                        transitions.Add (transition);
+                        continue;
+                    }
+                    if (transitions.GetViewBetween (transition, transition).Count == 0)
+                        transitions.Add (transition);
+                }
+                configSets [stateNr] = transitions;
+            }
+            return configSets;
         }
 
-        private void AnalyzeParserPDAStacks ()
+        private PdaSnapshotConfigSet AnalyzeParserPDAStacks ()
         {
-            int stackCount = Parser.stackSet.Count;
-            int stackCounter = 0;
-            foreach (var stack in Parser.stackSet)
+            PdaSnapshotConfigSet pdaSnapshot = new PdaSnapshotConfigSet ();
+            if (true)
             {
-                List<AsnRhsConfigSet> configSets = new List<AsnRhsConfigSet> ();
-                ++stackCounter;
-                Logger?.InfoLine ($"stack {stack.stackCounter} ({stackCounter}/{stackCount})", AnglrLoggerBase.WriteOnlyMsg);
-
-                int [] stateStack = stack.stateStack.ToArray ();
-                int stackDepth = stack.stateStack.stackDepth;
-
-                List<RhsState> rhsStates = new List<RhsState> ();
-                for (int i = 0; i < stackDepth; ++i)
+                foreach (var stack in Parser.stackSet)
                 {
-                    rhsStates.Add (GrammarStatesGenerator.GetRhsState (stateStack [i]));
+                    int [] stateStack = stack.stateStack.ToArray ();
+                    int stackDepth = stack.stateStack.stackDepth;
+                    int [] pdaStack = new int [stackDepth];
+                    for (int i = 0; i < stackDepth; i++)
+                        pdaStack [i] = stateStack [i];
+                    pdaSnapshot [stack.stackCounter] = GrammarStatesGenerator.GetPdaStackSnapshot (pdaStack);
                 }
-                rhsStates.Add (null);
-
-                // *** COLLECT ***
-                for (int i = 0; i < stackDepth; ++i)
+            }
+            else
+            {
+                int stackCount = Parser.stackSet.Count;
+                int stackCounter = 0;
+                foreach (var stack in Parser.stackSet)
                 {
-                    int stateNr = stateStack [i];
-                    AsnRhsConfigSet transitions = new AsnRhsConfigSet ();
-                    configSets.Add (transitions);
-                    RhsState rhsState = GrammarStatesGenerator.GetRhsState (stateNr);
-                    rhscfgset core = rhsState.m_core;
-                    closurelist closure = rhsState.m_closure;
-                    Logger?.InfoLine ($"\tState {stateNr}, {rhsState.m_SymbolToken.name}", AnglrLoggerBase.WriteOnlyMsg);
+                    List<AsnRhsConfigSet> configSets = new List<AsnRhsConfigSet> ();
+                    ++stackCounter;
+                    Logger?.InfoLine ($"stack {stack.stackCounter} ({stackCounter}/{stackCount})", AnglrLoggerBase.WriteOnlyMsg);
 
-                    RhsState refState = rhsStates [i + 1];
-                    SymbolToken refSymbol = null;
-                    if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
-                        continue;
+                    int [] stateStack = stack.stateStack.ToArray ();
+                    int stackDepth = stack.stateStack.stackDepth;
 
-                    Queue<SymbolToken> queue = new Queue<SymbolToken> ();
-                    queue.Enqueue (refSymbol);
-                    while (queue.Count > 0)
+                    List<RhsState> rhsStates = new List<RhsState> ();
+                    for (int i = 0; i < stackDepth; ++i)
                     {
-                        refSymbol = queue.Dequeue ();
-                        foreach (var element in core.Values)
+                        rhsStates.Add (GrammarStatesGenerator.GetRhsState (stateStack [i]));
+                    }
+                    rhsStates.Add (null);
+
+                    // *** COLLECT ***
+                    for (int i = 0; i < stackDepth; ++i)
+                    {
+                        int stateNr = stateStack [i];
+                        AsnRhsConfigSet transitions = new AsnRhsConfigSet ();
+                        configSets.Add (transitions);
+                        RhsState rhsState = GrammarStatesGenerator.GetRhsState (stateNr);
+                        rhscfgset core = rhsState.m_core;
+                        closurelist closure = rhsState.m_closure;
+                        Logger?.InfoLine ($"\tState {stateNr}, {rhsState.m_SymbolToken.name}", AnglrLoggerBase.WriteOnlyMsg);
+
+                        RhsState refState = rhsStates [i + 1];
+                        SymbolToken refSymbol = null;
+                        if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
+                            continue;
+
+                        Queue<SymbolToken> queue = new Queue<SymbolToken> ();
+                        queue.Enqueue (refSymbol);
+                        while (queue.Count > 0)
                         {
-                            RhsProduction production = element.rhsProduction;
-                            AsnRhsConfiguration configuration = new AsnRhsConfiguration (production, element.rhsIterator.position);
-                            if (!configuration.AtEnd && (configuration.DotNode.symbolToken.id != refSymbol.id))
-                                continue;
-                            if (transitions.TryGetValue (configuration, out _))
-                                continue;
-                            transitions.Add (configuration);
-                            DisplayTransition (configuration);
-                        }
-                        foreach (var element in closure.Values)
-                        {
-                            RhsProductionNode productionNode = element.rhsProductionNode;
-                            foreach (var production in productionNode.Productions)
+                            refSymbol = queue.Dequeue ();
+                            foreach (var element in core.Values)
                             {
-                                if (production.rhsNodes.Count == 0)
+                                RhsProduction production = element.rhsProduction;
+                                AsnRhsConfiguration configuration = new AsnRhsConfiguration (production, element.rhsIterator.position);
+                                if (!configuration.AtEnd && (configuration.DotNode.symbolToken.id != refSymbol.id))
                                     continue;
-                                RhsNode rhsNode = production.rhsNodes [0];
-                                if (rhsNode.symbolToken.id != refSymbol.id)
-                                    continue;
-                                AsnRhsConfiguration configuration = new AsnRhsConfiguration (production, 0);
                                 if (transitions.TryGetValue (configuration, out _))
                                     continue;
-                                queue.Enqueue (production.symbolToken);
                                 transitions.Add (configuration);
                                 DisplayTransition (configuration);
                             }
+                            foreach (var element in closure.Values)
+                            {
+                                RhsProductionNode productionNode = element.rhsProductionNode;
+                                foreach (var production in productionNode.Productions)
+                                {
+                                    if (production.rhsNodes.Count == 0)
+                                        continue;
+                                    RhsNode rhsNode = production.rhsNodes [0];
+                                    if (rhsNode.symbolToken.id != refSymbol.id)
+                                        continue;
+                                    AsnRhsConfiguration configuration = new AsnRhsConfiguration (production, 0);
+                                    if (transitions.TryGetValue (configuration, out _))
+                                        continue;
+                                    queue.Enqueue (production.symbolToken);
+                                    transitions.Add (configuration);
+                                    DisplayTransition (configuration);
+                                }
+                            }
                         }
                     }
-                }
 
-                // *** OPTIMIZE ***
-                for (int i = 0; i < stackDepth; ++i)
-                {
-                    int stateNr = stateStack [i];
-
-                    RhsState refState = rhsStates [i + 1];
-                    SymbolToken refSymbol = null;
-                    if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
-                        continue;
-
-                    AsnRhsConfigSet transitions = new AsnRhsConfigSet ();
-                    AsnRhsConfigSet oldTransitions = configSets [i];
-                    AsnRhsConfigSet refTransitions = configSets [i + 1];
-
-                    foreach (var transition in oldTransitions)
+                    // *** OPTIMIZE ***
+                    for (int i = 0; i < stackDepth; ++i)
                     {
-                        if (transition.AtEnd || (transition.DotNode.symbolToken.id != refSymbol.id))
-                        {
-                            transitions.Add (transition);
+                        int stateNr = stateStack [i];
+
+                        RhsState refState = rhsStates [i + 1];
+                        SymbolToken refSymbol = null;
+                        if ((refState == null) || ((refSymbol = refState.m_SymbolToken) == null))
                             continue;
+
+                        AsnRhsConfigSet transitions = new AsnRhsConfigSet ();
+                        AsnRhsConfigSet oldTransitions = configSets [i];
+                        AsnRhsConfigSet refTransitions = configSets [i + 1];
+
+                        foreach (var transition in oldTransitions)
+                        {
+                            if (transition.AtEnd || (transition.DotNode.symbolToken.id != refSymbol.id))
+                            {
+                                transitions.Add (transition);
+                                continue;
+                            }
+                            if (refTransitions.TryGetValue (transition.Next (), out _))
+                                transitions.Add (transition);
                         }
-                        if (refTransitions.TryGetValue (transition.Next (), out _))
-                            transitions.Add (transition);
+                        configSets [i] = transitions;
                     }
-                    configSets [i] = transitions;
-                }
 
-                // *** DISPLAY ***
-                for (int i = 0; i < stackDepth; ++i)
-                {
-                    int stateNr = stateStack [i];
-                    RhsState rhsState = GrammarStatesGenerator.GetRhsState (stateNr);
-                    Logger?.InfoLine ($"\tState {stateNr}, {rhsState.m_SymbolToken.name}", AnglrLoggerBase.WriteOnlyMsg);
-
-                    AsnRhsConfigSet transitions = configSets [i];
-
-                    foreach (var transition in transitions)
+                    // *** DISPLAY ***
+                    for (int i = 0; i < stackDepth; ++i)
                     {
-                        DisplayTransition (transition);
+                        int stateNr = stateStack [i];
+                        RhsState rhsState = GrammarStatesGenerator.GetRhsState (stateNr);
+                        Logger?.InfoLine ($"\tState {stateNr}, {rhsState.m_SymbolToken.name}", AnglrLoggerBase.WriteOnlyMsg);
+
+                        AsnRhsConfigSet transitions = configSets [i];
+
+                        foreach (var transition in transitions)
+                        {
+                            DisplayTransition (transition);
+                        }
                     }
                 }
             }
+            return pdaSnapshot;
+        }
+
+        public void DisplayPdaSnapshot (PdaSnapshotConfigSet pdaSnapshot)
+        {
+            foreach (var pda in pdaSnapshot)
+            {
+                PdaStackConfigSet cfgset = pda.Value;
+                Logger?.InfoLine ($"PDA stack {pda.Key}");
+                DisplayPdaStackSnapshot (pda);
+            }
+        }
+
+        public void DisplayPdaStackSnapshot (KeyValuePair<int, PdaStackConfigSet> pda)
+        {
+            foreach (var stateInfo in pda.Value)
+            {
+                Logger?.InfoLine ($"\tstate {stateInfo.Key}");
+                PdaRhsStateConfigSet stateCfgSet = stateInfo.Value;
+                DisplayPdaStateSnapshot (stateCfgSet);
+            }
+        }
+
+        public void DisplayPdaStateSnapshot (PdaRhsStateConfigSet stateCfgSet)
+        {
+            foreach (var transition in stateCfgSet)
+            {
+                int rhsPosition = transition.DotPosition;
+                DisplayPdaTransition (transition, rhsPosition);
+            }
+        }
+
+        public void DisplayPdaTransition (PdaRhsConfiguration transition, int rhsPosition)
+        {
+            Logger?.InfoLine
+            (
+                (t) =>
+                {
+                    StringBuilder sb = new StringBuilder ();
+                    RhsProduction production = t.RhsProduction;
+                    sb.Append ($"\t\t{production.symbolToken.name}:");
+                    bool reduction = true;
+                    foreach (var node in transition)
+                    {
+                        if (rhsPosition == transition.Position)
+                        {
+                            sb.Append ($" .");
+                            reduction = false;
+                        }
+                        sb.Append ($" {node.symbolToken.name}");
+                    }
+                    if (reduction)
+                    {
+                        sb.Append ($" .");
+                        reduction = false;
+                    }
+                    return sb.ToString ();
+                },
+                transition,
+                AnglrLoggerBase.WriteOnlyMsg
+            );
         }
 
         private void DisplayTransition (AsnRhsConfiguration transition)
@@ -457,8 +615,7 @@ namespace AsnParserExample
         {
             if (reduceBP)
             {
-                DisplayParserPDAStacks (ruleName, fallingState, bottomState, risingState);
-                AnalyzeParserPDAStacks ();
+                GrammarStatesGenerator.DisplayPdaSnapshot (AnalyzeParserPDAStacks ());
                 reduceBP = false;
             }
         }
