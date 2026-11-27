@@ -379,14 +379,9 @@ namespace AsnParserExample
             if (true)
             {
                 foreach (var stack in Parser.stackSet)
-                {
-                    int [] stateStack = stack.stateStack.ToArray ();
-                    int stackDepth = stack.stateStack.stackDepth;
-                    int [] pdaStack = new int [stackDepth];
-                    for (int i = 0; i < stackDepth; i++)
-                        pdaStack [i] = stateStack [i];
-                    pdaSnapshot [stack.stackCounter] = GrammarStatesGenerator.GetPdaStackSnapshot (pdaStack);
-                }
+                    pdaSnapshot [stack.stackCounter] =
+                        GrammarStatesGenerator.GetPdaStackSnapshot
+                            (stack.stateStack.ToArray ().Take (stack.stateStack.stackDepth).ToArray ());
             }
             else
             {
